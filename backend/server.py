@@ -1,81 +1,63 @@
-""""TaxApp FastAPI backend.
-
-Modules:
-- /api/auth          - JWT email/password authentication (httpOnly cookies)
-- /api/income        - monthly income + PAYE records
-- /api/expenses      - manual or OCR-sourced expense items
-- /api/slips         - receipt image upload + OCR extraction (GPT-4o vision)
-- /api/tax/summary   - annual SARS calculation (taxable income / refund / owed)
 """
-from dotenv import load_dotenv
-from pathlib import Path
+TaxApp FastAPI backend (fixed)
 
-ROOT_DIR = Path(__file__).parent
-load_dotenv(ROOT_DIR / ".env")
+Same data store schema and endpoints as the original file.
+Creates the Mongo client at startup with certifi CA bundle, uses a single
+client instance, and consolidates startup/shutdown logic.
+Environment variables required:
+  - MONGO_URL
+  - DB_NAME
+  - JWT_SECRET
+Optional:
+  - ADMIN_EMAIL (default admin@taxapp.za)
+  - ADMIN_PASSWORD (default Admin@2026)
+  - CORS_ORIGINS (comma-separated)
+"""
+from __future__ import annotations
 
 import os
 import uuid
 import logging
 import mimetypes
 from datetime import datetime, timezone, timedelta
+from pathlib import Path
 from typing import List, Optional, Literal
 
+from dotenv import load_dotenv
 import certifi
 from motor.motor_asyncio import AsyncIOMotorClient
-
 import bcrypt
 import jwt
+
 from fastapi import FastAPI, APIRouter, Depends, HTTPException, Request, Response, UploadFile, File, status
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.cors import CORSMiddleware
-from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, EmailStr, Field, ConfigDict
 
+# Local imports (assumed present)
 from tax_engine import annual_summary, calculate_annual_tax, SARS_BRACKETS_2024_2025
 try:
     from ocr_service import extract_receipt, CATEGORIES
 except Exception:
     extract_receipt = None
     CATEGORIES = ["Transport", "Medical", "Education", "Business", "Other"]
-    
+
 # ---------------------------------------------------------------------------
-# Configuration
+# Load .env and configuration
 # ---------------------------------------------------------------------------
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s - %(message)s")
-logger = logging.getLogger("taxapp")
+ROOT_DIR = Path(__file__).parent
+load_dotenv(ROOT_DIR / ".env")
 
-
-
-# module-level placeholders
-client: AsyncIOMotorClient | None = None
-db = None
-
-@app.on_event("startup")
-async def startup() -> None:
-    global client, db
-    # create client here with explicit TLS and CA bundle
-    client = AsyncIOMotorClient(MONGO_URL, tls=True, tlsCAFile=certifi.where())
-    db = client[DB_NAME]
-
-    # now create indexes and seed admin (existing code)
-    await db.users.create_index("email", unique=True)
-    await db.users.create_index("id", unique=True)
-
-    @app.on_event("shutdown")
-    async def shutdown() -> None:
-        global client
-        if client:
-        client.close()
-
-JWT_SECRET = os.environ["JWT_SECRET"]
+MONGO_URL = os.environ.get("MONGO_URL")
+DB_NAME = os.environ.get("DB_NAME")
+JWT_SECRET = os.environ.get("JWT_SECRET")
 JWT_ALG = "HS256"
-ACCESS_TTL_MIN = 60 * 12         # 12h - cookie-based, comfortable for a finance dashboard
+ACCESS_TTL_MIN = 60 * 12         # 12h
 REFRESH_TTL_DAYS = 14
 
-BASE_DIR = Path(__file__).resolve().parent
-STORAGE_DIR = BASE_DIR / "storage" / "slips"
-STORAGE_DIR.mkdir(parents=True, exist_ok=True)
+if not MONGO_URL or not DB_NAME or not JWT_SECRET:
+    raise RuntimeError("MONGO_URL, DB_NAME and JWT_SECRET must be set in environment")
 
 ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@taxapp.za")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "Admin@2026")
@@ -84,13 +66,25 @@ CORS_ORIGINS = [o.strip() for o in os.environ.get("CORS_ORIGINS", "").split(",")
 if not CORS_ORIGINS:
     CORS_ORIGINS = ["*"]
 
-client = AsyncIOMotorClient(MONGO_URL)
-db = client[DB_NAME]
+# Storage
+BASE_DIR = Path(__file__).resolve().parent
+STORAGE_DIR = BASE_DIR / "storage" / "slips"
+STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 
+# Logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s - %(message)s")
+logger = logging.getLogger("taxapp")
+
+# ---------------------------------------------------------------------------
+# FastAPI app and DB placeholders
+# ---------------------------------------------------------------------------
 app = FastAPI(title="TaxApp API")
 api = APIRouter(prefix="/api")
 
-# CORS: when credentials are sent, origin must be explicit (not "*")
+client: Optional[AsyncIOMotorClient] = None
+db = None  # will be set to client[DB_NAME] at startup
+
+# CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
@@ -101,7 +95,6 @@ app.add_middleware(
 
 # Serve uploaded slip images
 app.mount("/storage/slips", StaticFiles(directory=str(STORAGE_DIR)), name="slips")
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -161,7 +154,6 @@ def strip_id(doc: dict) -> dict:
     doc.pop("_id", None)
     return doc
 
-
 # ---------------------------------------------------------------------------
 # Pydantic models
 # ---------------------------------------------------------------------------
@@ -216,12 +208,22 @@ class ExpenseOut(ExpenseIn):
     slip_id: Optional[str] = None
     created_at: datetime
 
-
 # ---------------------------------------------------------------------------
-# Startup: seed admin + indexes
+# Startup / Shutdown lifecycle
 # ---------------------------------------------------------------------------
 @app.on_event("startup")
 async def startup() -> None:
+    global client, db
+    logger.info("Starting TaxApp API, connecting to MongoDB")
+    client = AsyncIOMotorClient(
+        MONGO_URL,
+        tls=True,
+        tlsCAFile=certifi.where(),
+        serverSelectionTimeoutMS=10000,
+    )
+    db = client[DB_NAME]
+
+    # Create indexes
     await db.users.create_index("email", unique=True)
     await db.users.create_index("id", unique=True)
     await db.login_attempts.create_index("identifier")
@@ -229,7 +231,7 @@ async def startup() -> None:
     await db.expenses.create_index([("user_id", 1), ("date", -1)])
     await db.slips.create_index([("user_id", 1), ("uploaded_at", -1)])
 
-    # Seed admin
+    # Seed admin user
     existing = await db.users.find_one({"email": ADMIN_EMAIL})
     if existing is None:
         await db.users.insert_one({
@@ -252,8 +254,10 @@ async def startup() -> None:
 
 @app.on_event("shutdown")
 async def shutdown() -> None:
-    client.close()
-
+    global client
+    logger.info("Shutting down TaxApp API, closing MongoDB connection")
+    if client:
+        client.close()
 
 # ---------------------------------------------------------------------------
 # Auth endpoints
@@ -271,7 +275,6 @@ async def _check_lockout(identifier: str) -> None:
             last = datetime.fromisoformat(last)
         if last and datetime.now(timezone.utc) - last < timedelta(minutes=15):
             raise HTTPException(status_code=429, detail="Too many failed attempts. Try again in 15 minutes.")
-        # cooldown elapsed
         await db.login_attempts.delete_one({"identifier": identifier})
 
 
@@ -364,7 +367,6 @@ async def refresh(request: Request, response: Response):
 
 api.include_router(auth_router)
 
-
 # ---------------------------------------------------------------------------
 # Income endpoints
 # ---------------------------------------------------------------------------
@@ -383,7 +385,6 @@ async def create_income(payload: IncomeIn, user: dict = Depends(get_current_user
         "note": payload.note,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
-    # Upsert by (user_id, year, month)
     await db.income_records.update_one(
         {"user_id": user["id"], "year": payload.year, "month": payload.month},
         {"$set": doc},
@@ -418,7 +419,6 @@ async def delete_income(income_id: str, user: dict = Depends(get_current_user)):
 
 
 api.include_router(income_router)
-
 
 # ---------------------------------------------------------------------------
 # Expense endpoints
@@ -499,7 +499,6 @@ async def delete_expense(expense_id: str, user: dict = Depends(get_current_user)
 
 api.include_router(expense_router)
 
-
 # ---------------------------------------------------------------------------
 # Slip / OCR endpoints
 # ---------------------------------------------------------------------------
@@ -510,7 +509,6 @@ ALLOWED_MIME = {"image/jpeg", "image/png", "image/webp"}
 
 @slip_router.post("/upload")
 async def upload_slip(file: UploadFile = File(...), user: dict = Depends(get_current_user)):
-    """Upload a receipt image, run OCR, auto-create the linked expense."""
     mime = file.content_type or mimetypes.guess_type(file.filename or "")[0] or ""
     if mime not in ALLOWED_MIME:
         raise HTTPException(status_code=400, detail=f"Unsupported file type: {mime}. Use JPEG/PNG/WEBP.")
@@ -542,11 +540,12 @@ async def upload_slip(file: UploadFile = File(...), user: dict = Depends(get_cur
     # Run OCR (best-effort)
     ocr_data = None
     ocr_error = None
-    try:
-        ocr_data = await extract_receipt(str(file_path), mime)
-    except Exception as exc:
-        logger.warning("OCR failed for slip %s: %s", slip_id, exc)
-        ocr_error = str(exc)
+    if extract_receipt:
+        try:
+            ocr_data = await extract_receipt(str(file_path), mime)
+        except Exception as exc:
+            logger.warning("OCR failed for slip %s: %s", slip_id, exc)
+            ocr_error = str(exc)
 
     expense_id = None
     if ocr_data:
@@ -600,7 +599,6 @@ async def delete_slip(slip_id: str, user: dict = Depends(get_current_user)):
     slip = await db.slips.find_one({"id": slip_id, "user_id": user["id"]})
     if not slip:
         raise HTTPException(status_code=404, detail="Slip not found")
-    # remove file on disk
     try:
         p = Path(slip.get("file_path", ""))
         if p.exists():
@@ -608,14 +606,12 @@ async def delete_slip(slip_id: str, user: dict = Depends(get_current_user)):
     except Exception:
         pass
     await db.slips.delete_one({"id": slip_id, "user_id": user["id"]})
-    # Also remove the linked expense
     if slip.get("expense_id"):
         await db.expenses.delete_one({"id": slip["expense_id"], "user_id": user["id"]})
     return {"ok": True}
 
 
 api.include_router(slip_router)
-
 
 # ---------------------------------------------------------------------------
 # Tax engine endpoints
@@ -644,7 +640,6 @@ async def tax_summary(year: int = 2025, user: dict = Depends(get_current_user)):
 
 
 api.include_router(tax_router)
-
 
 # ---------------------------------------------------------------------------
 # Root
