@@ -20,6 +20,9 @@ import mimetypes
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Literal
 
+import certifi
+from motor.motor_asyncio import AsyncIOMotorClient
+
 import bcrypt
 import jwt
 from fastapi import FastAPI, APIRouter, Depends, HTTPException, Request, Response, UploadFile, File, status
@@ -42,8 +45,29 @@ except Exception:
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s - %(message)s")
 logger = logging.getLogger("taxapp")
 
-MONGO_URL = os.environ["MONGO_URL"]
-DB_NAME = os.environ["DB_NAME"]
+
+
+# module-level placeholders
+client: AsyncIOMotorClient | None = None
+db = None
+
+@app.on_event("startup")
+async def startup() -> None:
+    global client, db
+    # create client here with explicit TLS and CA bundle
+    client = AsyncIOMotorClient(MONGO_URL, tls=True, tlsCAFile=certifi.where())
+    db = client[DB_NAME]
+
+    # now create indexes and seed admin (existing code)
+    await db.users.create_index("email", unique=True)
+    await db.users.create_index("id", unique=True)
+
+    @app.on_event("shutdown")
+    async def shutdown() -> None:
+        global client
+        if client:
+        client.close()
+
 JWT_SECRET = os.environ["JWT_SECRET"]
 JWT_ALG = "HS256"
 ACCESS_TTL_MIN = 60 * 12         # 12h - cookie-based, comfortable for a finance dashboard
