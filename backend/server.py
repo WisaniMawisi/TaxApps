@@ -48,7 +48,9 @@ JWT_SECRET = os.environ["JWT_SECRET"]
 JWT_ALG = "HS256"
 ACCESS_TTL_MIN = 60 * 12         # 12h - cookie-based, comfortable for a finance dashboard
 REFRESH_TTL_DAYS = 14
-STORAGE_DIR = Path(os.environ.get("STORAGE_DIR", "/app/storage/slips"))
+
+BASE_DIR = Path(__file__).resolve().parent
+STORAGE_DIR = BASE_DIR / "storage" / "slips"
 STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 
 ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@taxapp.za")
