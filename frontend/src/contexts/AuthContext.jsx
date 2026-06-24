@@ -8,6 +8,11 @@ export function AuthProvider({ children }) {
   const [error, setError] = useState('');
 
   const fetchMe = useCallback(async () => {
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+      setUser(false);
+      return;
+    }
     try {
       const { data } = await api.get('/auth/me');
       setUser(data);
@@ -24,10 +29,12 @@ export function AuthProvider({ children }) {
     setError('');
     try {
       const { data } = await api.post('/auth/login', { email, password });
-      setUser(data);
+      localStorage.setItem('access_token', data.access_token);
+      localStorage.setItem('refresh_token', data.refresh_token);
+      setUser(data.user);  // ← was: setUser(data)
       return true;
     } catch (e) {
-      setError(formatApiError(e.response?.data?.detail) || e.message);
+      setError(formatApiError(e?.data?.detail) || e?.message || 'Login failed');
       return false;
     }
   };
@@ -36,10 +43,12 @@ export function AuthProvider({ children }) {
     setError('');
     try {
       const { data } = await api.post('/auth/register', payload);
-      setUser(data);
+      localStorage.setItem('access_token', data.access_token);
+      localStorage.setItem('refresh_token', data.refresh_token);
+      setUser(data.user);  // ← was: setUser(data)
       return true;
     } catch (e) {
-      setError(formatApiError(e.response?.data?.detail) || e.message);
+      setError(formatApiError(e?.data?.detail) || e?.message || 'Registration failed');
       return false;
     }
   };
@@ -48,6 +57,8 @@ export function AuthProvider({ children }) {
     try {
       await api.post('/auth/logout');
     } catch {}
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('refresh_token');
     setUser(false);
   };
 

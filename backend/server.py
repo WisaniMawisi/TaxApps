@@ -294,11 +294,12 @@ async def _record_failed(identifier: str) -> None:
     )
 
 
-@auth_router.post("/register", response_model=UserOut)
+@auth_router.post("/register", response_model=AuthOut)
 async def register(payload: RegisterIn, response: Response):
     email = payload.email.lower()
     if await db.users.find_one({"email": email}):
         raise HTTPException(status_code=400, detail="Email already registered")
+
     user_id = str(uuid.uuid4())
     doc = {
         "id": user_id,
@@ -311,11 +312,27 @@ async def register(payload: RegisterIn, response: Response):
     }
     await db.users.insert_one(doc)
     set_auth_cookies(response, user_id, email)
-    return UserOut(id=user_id, email=email, name=payload.name, age=payload.age,
-                   role="user", created_at=datetime.fromisoformat(doc["created_at"]))
+
+    access = create_token({"sub": user_id, "email": email, "type": "access"}, ACCESS_TTL_MIN)
+    refresh = create_token({"sub": user_id, "type": "refresh"}, REFRESH_TTL_DAYS * 24 * 60)
+
+    user_out = UserOut(
+        id=user_id, email=email, name=payload.name,
+        age=payload.age, role="user",
+        created_at=datetime.fromisoformat(doc["created_at"]),
+    )
+
+    return AuthOut(user=user_out, access_token=access, refresh_token=refresh)
+
+# New response model for login/register
+class AuthOut(BaseModel):
+    user: UserOut
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
 
 
-@auth_router.post("/login", response_model=UserOut)
+@auth_router.post("/login", response_model=AuthOut)
 async def login(payload: LoginIn, request: Request, response: Response):
     email = payload.email.lower()
     ip = request.client.host if request.client else "unknown"
@@ -328,12 +345,21 @@ async def login(payload: LoginIn, request: Request, response: Response):
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
     await db.login_attempts.delete_one({"identifier": identifier})
+
+    # Keep cookies for browser clients that support them,
+    # but also return tokens in body for cross-domain SPAs
     set_auth_cookies(response, user["id"], email)
-    return UserOut(
+
+    access = create_token({"sub": user["id"], "email": email, "type": "access"}, ACCESS_TTL_MIN)
+    refresh = create_token({"sub": user["id"], "type": "refresh"}, REFRESH_TTL_DAYS * 24 * 60)
+
+    user_out = UserOut(
         id=user["id"], email=user["email"], name=user.get("name", ""),
         age=user.get("age", 30), role=user.get("role", "user"),
         created_at=datetime.fromisoformat(user["created_at"]) if isinstance(user.get("created_at"), str) else user.get("created_at"),
     )
+
+    return AuthOut(user=user_out, access_token=access, refresh_token=refresh)
 
 
 @auth_router.post("/logout")
