@@ -292,7 +292,12 @@ async def _record_failed(identifier: str) -> None:
         {"$inc": {"count": 1}, "$set": {"last_attempt": datetime.now(timezone.utc).isoformat()}},
         upsert=True,
     )
-
+# New response model for login/register
+class AuthOut(BaseModel):
+    user: UserOut
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
 
 @auth_router.post("/register", response_model=AuthOut)
 async def register(payload: RegisterIn, response: Response):
@@ -324,12 +329,7 @@ async def register(payload: RegisterIn, response: Response):
 
     return AuthOut(user=user_out, access_token=access, refresh_token=refresh)
 
-# New response model for login/register
-class AuthOut(BaseModel):
-    user: UserOut
-    access_token: str
-    refresh_token: str
-    token_type: str = "bearer"
+
 
 
 @auth_router.post("/login", response_model=AuthOut)
@@ -381,11 +381,15 @@ async def me(user: dict = Depends(get_current_user)):
     )
 
 
+class RefreshIn(BaseModel):
+    refresh_token: Optional[str] = None
+
 @auth_router.post("/refresh")
-async def refresh(request: Request, response: Response):
-    rt = request.cookies.get("refresh_token")
+async def refresh(payload: RefreshIn, request: Request, response: Response):
+    rt = payload.refresh_token or request.cookies.get("refresh_token")
     if not rt:
         raise HTTPException(status_code=401, detail="No refresh token")
+    # rest unchanged...
     try:
         payload = jwt.decode(rt, JWT_SECRET, algorithms=[JWT_ALG])
         if payload.get("type") != "refresh":
