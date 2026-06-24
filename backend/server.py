@@ -78,8 +78,14 @@ logger = logging.getLogger("taxapp")
 # ---------------------------------------------------------------------------
 # FastAPI app and DB placeholders
 # ---------------------------------------------------------------------------
-app = FastAPI(title="TaxApp API")
-api = APIRouter(prefix="/api")
+# Root API endpoint
+@api.get("/")
+async def root():
+    return {
+        "app": "TaxApp API",
+        "status": "ok"
+    }
+
 
 client: Optional[AsyncIOMotorClient] = None
 db = None  # will be set to client[DB_NAME] at startup
