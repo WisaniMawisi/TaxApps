@@ -205,7 +205,10 @@ class ExpenseIn(BaseModel):
     amount: float = Field(gt=0)
     date: str  # ISO YYYY-MM-DD
     vendor: str = Field(min_length=1, max_length=120)
-    category: Literal["Spouse", "Savings", "Groceries", "Internet", "Electricity", "Investments", "Adventure", "Others"] = "Others"
+    category: Literal[
+        "Spouse", "Savings", "Groceries", "Internet",
+        "Electricity", "Investments", "Adventure", "Others"
+    ] = "Others"
     notes: Optional[str] = Field(default=None, max_length=300)
 
 
