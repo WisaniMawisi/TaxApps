@@ -196,11 +196,15 @@ const Select = ({ label, value, onChange, options, testid }) => (
 );
 const CategoryPill = ({ cat }) => {
   const color = {
-    Transport: 'text-info border-info/30 bg-info/10',
-    Medical: 'text-moss border-moss/30 bg-moss/10',
-    Education: 'text-charcoal border-line bg-surfaceAlt',
-    Business: 'text-terra border-terra/30 bg-terra/10',
-    Other: 'text-charcoal-muted border-line bg-surfaceAlt',
+    Spouse:      'text-terra border-terra/30 bg-terra/10',
+    Savings:     'text-moss border-moss/30 bg-moss/10',
+    Groceries:   'text-[#8A9A5B] border-[#8A9A5B]/30 bg-[#8A9A5B]/10',
+    Internet:    'text-info border-info/30 bg-info/10',
+    Electricity: 'text-[#E8A838] border-[#E8A838]/30 bg-[#E8A838]/10',
+    Investments: 'text-charcoal border-line bg-surfaceAlt',
+    Adventure:   'text-[#7B5EA7] border-[#7B5EA7]/30 bg-[#7B5EA7]/10',
+    Others:      'text-charcoal-muted border-line bg-surfaceAlt',
   }[cat] || 'text-charcoal-muted border-line bg-surfaceAlt';
+
   return <span className={`text-xs font-semibold px-2 py-0.5 border ${color}`}>{cat}</span>;
 };

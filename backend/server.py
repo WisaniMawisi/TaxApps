@@ -41,7 +41,7 @@ try:
     from ocr_service import extract_receipt, CATEGORIES
 except Exception:
     extract_receipt = None
-    CATEGORIES = ["Transport", "Medical", "Education", "Business", "Other"]
+    CATEGORIES = ["Spouse", "Savings", "Groceries", "Internet", "Electricity", "Investments", "Adventure", "Others"]
 
 # ---------------------------------------------------------------------------
 # Load .env and configuration
@@ -205,7 +205,7 @@ class ExpenseIn(BaseModel):
     amount: float = Field(gt=0)
     date: str  # ISO YYYY-MM-DD
     vendor: str = Field(min_length=1, max_length=120)
-    category: Literal["Transport", "Medical", "Education", "Business", "Other"] = "Other"
+    category: Literal["Spouse", "Savings", "Groceries", "Internet", "Electricity", "Investments", "Adventure", "Others"] = "Others"
     notes: Optional[str] = Field(default=None, max_length=300)
 
 
