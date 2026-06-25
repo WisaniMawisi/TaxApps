@@ -12,8 +12,8 @@ export default function Expenses() {
   const [error, setError] = useState('');
 
   function defaultForm() {
-    const today = new Date().toISOString().slice(0, 10);
-    return { amount: '', date: today, vendor: '', category: 'Other', notes: '' };
+  const today = new Date().toISOString().slice(0, 10);
+  return { amount: '', date: today, vendor: '', category: 'Others', notes: '' };  // was 'Other'
   }
 
   const load = async () => {

@@ -12,7 +12,7 @@ const EMPTY_MANUAL = {
   amount: '',
   date: new Date().toISOString().slice(0, 10),
   vendor: '',
-  category: 'Other',
+  category: 'Others',  // was 'Other'
   notes: '',
 };
 
@@ -270,7 +270,7 @@ function ManualTab() {
     try {
       const { data } = await api.post('/expenses', {
         amount: Number(form.amount),
-        date: form.dat
+        date: form.date,
         vendor: form.vendor.trim(),
         category: form.category,
         notes: form.notes.trim() || null,
