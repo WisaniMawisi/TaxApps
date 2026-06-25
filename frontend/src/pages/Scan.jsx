@@ -270,7 +270,7 @@ function ManualTab() {
     try {
       const { data } = await api.post('/expenses', {
         amount: Number(form.amount),
-        date: form.date,
+        date: form.dat
         vendor: form.vendor.trim(),
         category: form.category,
         notes: form.notes.trim() || null,
