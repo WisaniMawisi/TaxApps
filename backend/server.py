@@ -190,6 +190,7 @@ class UserOut(BaseModel):
 class IncomeIn(BaseModel):
     month: int = Field(ge=1, le=12)
     year: int = Field(ge=2000, le=2100)
+    day: Optional[int] = Field(default=1, ge=1, le=31)
     income: float = Field(ge=0)
     tax_paid: float = Field(ge=0)
     note: Optional[str] = Field(default=None, max_length=200)
@@ -421,20 +422,18 @@ async def create_income(payload: IncomeIn, user: dict = Depends(get_current_user
         "user_id": user["id"],
         "month": payload.month,
         "year": payload.year,
+        "day": payload.day or 1,
         "income": float(payload.income),
         "tax_paid": float(payload.tax_paid),
         "note": payload.note,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
-    await db.income_records.update_one(
-        {"user_id": user["id"], "year": payload.year, "month": payload.month},
-        {"$set": doc},
-        upsert=True,
-    )
-    saved = await db.income_records.find_one({"user_id": user["id"], "year": payload.year, "month": payload.month})
-    saved = strip_id(saved)
-    saved["created_at"] = datetime.fromisoformat(saved["created_at"]) if isinstance(saved["created_at"], str) else saved["created_at"]
-    return IncomeOut(**saved)
+    await db.income_records.insert_one(doc)
+    doc = strip_id(doc)
+    doc["created_at"] = datetime.fromisoformat(doc["created_at"])
+    return IncomeOut(**doc)
+
+
 
 
 @income_router.get("", response_model=List[IncomeOut])

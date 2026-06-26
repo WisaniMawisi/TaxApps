@@ -14,6 +14,7 @@ export default function Income() {
   const [form, setForm] = useState({
     month: now.getMonth() + 1,
     year: now.getFullYear(),
+    day: now.getDate(),
     income: '',
     tax_paid: '',
     note: '',
@@ -60,6 +61,7 @@ export default function Income() {
       await api.post('/income', {
         month: Number(form.month),
         year: Number(form.year),
+        day: Number(form.day || 1),
         income: Number(form.income || 0),
         tax_paid: Number(form.tax_paid || 0),
         note: form.note.trim() || null,
@@ -102,6 +104,10 @@ export default function Income() {
   };
 
   const safeList = Array.isArray(list) ? list : [];
+
+  const sorted = [...safeList].sort((a, b) =>
+    a.month !== b.month ? a.month - b.month : (a.day ?? 1) - (b.day ?? 1)
+  );
 
   const totalIncome = safeList.reduce(
     (sum, item) => sum + Number(item.income || 0),
@@ -177,6 +183,27 @@ export default function Income() {
               </option>
             ))}
           </select>
+        </div>
+
+        <div>
+          <label className="label-tag block mb-2">
+            Day
+          </label>
+
+          <input
+            type="number"
+            min="1"
+            max="31"
+            value={form.day}
+            onChange={(e) =>
+              setForm({
+                ...form,
+                day: e.target.value,
+              })
+            }
+            className="w-full border border-line bg-surface px-3 py-2 text-sm focus:outline-none focus:border-moss"
+            placeholder="1"
+          />
         </div>
 
         <div>
@@ -275,11 +302,14 @@ export default function Income() {
       </form>
 
       <div className="border border-line bg-surface">
-        <div className="grid grid-cols-2 md:grid-cols-5 border-b border-line bg-surfaceAlt font-heading font-bold">
-          <Th>Month</Th>
+        <div className="grid grid-cols-2 md:grid-cols-6 border-b border-line bg-surfaceAlt font-heading font-bold">
+          <Th>Date</Th>
           <Th align="right">Income</Th>
           <Th align="right" className="hidden md:block">
             PAYE
+          </Th>
+          <Th align="right" className="hidden md:block">
+            Net
           </Th>
           <Th className="hidden md:block">
             Note
@@ -287,20 +317,26 @@ export default function Income() {
           <Th align="right"> </Th>
         </div>
 
-        {safeList.length === 0 ? (
+        {sorted.length === 0 ? (
           <div className="p-10 text-center text-charcoal-muted text-sm">
             No income recorded for {year}.
           </div>
         ) : (
-          safeList.map((r) => (
+          sorted.map((r) => (
             <div
               key={r.id}
-              className="grid grid-cols-2 md:grid-cols-5 border-b border-line/70"
+              className="grid grid-cols-2 md:grid-cols-6 border-b border-line/70 hover:bg-surfaceAlt/40 transition-colors items-center"
             >
               <Td>
                 <span className="font-semibold">
                   {MONTH_NAMES[r.month - 1]}
-                </span>{' '}
+                </span>
+                {r.day ? (
+                  <span className="text-charcoal-muted text-xs">
+                    {' '}{r.day}
+                  </span>
+                ) : null}
+                {' '}
                 <span className="text-charcoal-muted text-xs">
                   {r.year}
                 </span>
@@ -315,6 +351,13 @@ export default function Income() {
                 className="hidden md:block"
               >
                 {ZAR(r.tax_paid)}
+              </Td>
+
+              <Td
+                align="right"
+                className="hidden md:block text-moss font-semibold"
+              >
+                {ZAR(r.income - r.tax_paid)}
               </Td>
 
               <Td className="hidden md:block">
@@ -334,8 +377,8 @@ export default function Income() {
         )}
 
         {safeList.length > 0 && (
-          <div className="grid grid-cols-2 md:grid-cols-5 bg-surfaceAlt font-heading font-bold">
-            <Td>{safeList.length} months</Td>
+          <div className="grid grid-cols-2 md:grid-cols-6 bg-surfaceAlt font-heading font-bold">
+            <Td>{safeList.length} records</Td>
 
             <Td align="right">
               {ZAR(totalIncome)}
@@ -346,6 +389,13 @@ export default function Income() {
               className="hidden md:block"
             >
               {ZAR(totalPaye)}
+            </Td>
+
+            <Td
+              align="right"
+              className="hidden md:block text-moss"
+            >
+              {ZAR(totalIncome - totalPaye)}
             </Td>
 
             <Td className="hidden md:block" />

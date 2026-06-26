@@ -171,7 +171,59 @@ export default function Expenses() {
       )}
     </div>
   );
+
+  const [income, setIncome] = useState(0);
+
+    const load = async () => {
+      try {
+        const params = new URLSearchParams();
+        if (filter.year)  params.set('year',  String(filter.year));
+        if (filter.month) params.set('month', String(filter.month));
+        if (filter.category) params.set('category', filter.category);
+
+        const [{ data: expenses }, { data: incomeList }] = await Promise.all([
+          api.get(`/expenses?${params.toString()}`),
+          api.get(`/income?year=${filter.year}`),
+        ]);
+
+        setList(Array.isArray(expenses) ? expenses : []);
+
+        // Sum income for the selected month, or all months if no month filter
+        const incomeRecords = Array.isArray(incomeList) ? incomeList : [];
+        const filteredIncome = filter.month
+          ? incomeRecords.filter(r => r.month === Number(filter.month))
+          : incomeRecords;
+        setIncome(filteredIncome.reduce((s, r) => s + r.income, 0));
+
+      } catch (err) {
+        console.error(err);
+        setError(formatApiError(err?.response?.data?.detail) || err.message);
+        setList([]);
+      }
+    };
+    {list.length > 0 && (
+      <>
+        <div className="grid grid-cols-6 bg-surfaceAlt font-heading font-bold border-t border-line" data-testid="expense-total">
+          <Td className="col-span-5 text-charcoal-muted">
+            {list.length} expense{list.length !== 1 ? 's' : ''}
+          </Td>
+          <Td align="right" className="text-terra">{ZAR(total)}</Td>
+        </div>
+        <div className="grid grid-cols-6 bg-surfaceAlt font-heading font-bold border-t border-line">
+          <Td className="col-span-5 text-charcoal-muted">Income</Td>
+          <Td align="right" className="text-moss">{ZAR(income)}</Td>
+        </div>
+       <div className="grid grid-cols-6 bg-surfaceAlt font-heading font-bold border-t-2 border-line">
+        <Td className="col-span-5">Balance remaining</Td>
+        <Td align="right" className={income - total >= 0 ? 'text-moss' : 'text-terra'}>
+          {ZAR(income - total)}
+        </Td>
+      </div>
+      </>
+    )};
 }
+
+
 
 const Th = ({ children, align = 'left', className = '' }) => (
   <div className={`label-tag px-4 py-3 ${align === 'right' ? 'text-right' : ''} ${className}`}>{children}</div>
