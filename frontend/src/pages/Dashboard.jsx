@@ -14,22 +14,29 @@ export default function Dashboard() {
   const year = new Date().getFullYear();
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const { data } = await api.get(`/tax/summary?year=${year}`);
-        setSummary(data);
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [year]);
+useEffect(() => {
+  (async () => {
+    try {
+      const { data } = await api.get(`/tax/summary?year=${year}`);
+      setSummary(data);
+      setError('');
+    } catch (err) {
+      console.error(err);
+      setError(err?.data?.detail || err?.message || 'Could not load your tax summary.');
+    } finally {
+      setLoading(false);
+    }
+  })();
+}, [year]);
 
   const monthly = MONTH_NAMES.map((m, i) => {
-    const rec = summary?.monthly_records?.find((r) => r.month === i + 1);
-    return { month: m, income: rec?.income || 0, paye: rec?.tax_paid || 0 };
-  });
+  const recs = summary?.monthly_records?.filter((r) => r.month === i + 1) || [];
+  const income = recs.reduce((sum, r) => sum + Number(r.income || 0), 0);
+  const paye = recs.reduce((sum, r) => sum + Number(r.tax_paid || 0), 0);
+  return { month: m, income, paye };
+});
 
   const pieData = Object.entries(summary?.category_breakdown || {}).map(([name, value]) => ({ name, value }));
 
