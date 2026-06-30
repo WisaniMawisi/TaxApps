@@ -239,10 +239,11 @@ async def startup() -> None:
     await db.users.create_index("email", unique=True)
     await db.users.create_index("id", unique=True)
     await db.login_attempts.create_index("identifier")
-    await db.income_records.create_index([("user_id", 1), ("year", 1), ("month", 1)], unique=True)
+    await db.income_records.create_index([("user_id", 1), ("year", 1), ("month", 1), ("day", 1)])   # ← line 145, already updated
     await db.expenses.create_index([("user_id", 1), ("date", -1)])
     await db.slips.create_index([("user_id", 1), ("uploaded_at", -1)])
 
+    
     # Seed admin user
     existing = await db.users.find_one({"email": ADMIN_EMAIL})
     if existing is None:
