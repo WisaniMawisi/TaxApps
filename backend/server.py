@@ -434,20 +434,47 @@ async def create_income(payload: IncomeIn, user: dict = Depends(get_current_user
     return IncomeOut(**doc)
 
 
-
-
 @income_router.get("", response_model=List[IncomeOut])
 async def list_income(year: Optional[int] = None, user: dict = Depends(get_current_user)):
     q = {"user_id": user["id"]}
     if year is not None:
         q["year"] = year
-    cursor = db.income_records.find(q).sort([("year", 1), ("month", 1)])
+    cursor = db.income_records.find(q).sort([("year", 1), ("month", 1), ("day", 1)])
     items: List[IncomeOut] = []
     async for d in cursor:
         d = strip_id(d)
         d["created_at"] = datetime.fromisoformat(d["created_at"]) if isinstance(d["created_at"], str) else d["created_at"]
         items.append(IncomeOut(**d))
     return items
+
+
+@income_router.get("/monthly-summary")
+async def income_monthly_summary(year: int, user: dict = Depends(get_current_user)):
+    """
+    Aggregates all income entries by month for the given year.
+    Used by the dashboard graph — one data point per month,
+    regardless of how many individual pay entries exist.
+    """
+    pipeline = [
+        {"$match": {"user_id": user["id"], "year": year}},
+        {"$group": {
+            "_id": "$month",
+            "total_income": {"$sum": "$income"},
+            "total_tax_paid": {"$sum": "$tax_paid"},
+            "entry_count": {"$sum": 1},
+        }},
+        {"$sort": {"_id": 1}},
+    ]
+    cursor = db.income_records.aggregate(pipeline)
+    results = []
+    async for d in cursor:
+        results.append({
+            "month": d["_id"],
+            "total_income": d["total_income"],
+            "total_tax_paid": d["total_tax_paid"],
+            "entry_count": d["entry_count"],
+        })
+    return {"year": year, "months": results}
 
 
 @income_router.delete("/{income_id}")
@@ -459,7 +486,6 @@ async def delete_income(income_id: str, user: dict = Depends(get_current_user)):
 
 
 api.include_router(income_router)
-
 # ---------------------------------------------------------------------------
 # Expense endpoints
 # ---------------------------------------------------------------------------
